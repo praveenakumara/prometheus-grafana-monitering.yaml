@@ -1,0 +1,193 @@
+################ prometheus #########################
+
+sudo useradd \
+    --system \
+    --no-create-home \
+    --shell /bin/false prometheus
+
+
+wget https://github.com/prometheus/prometheus/releases/download/v2.47.1/prometheus-2.47.1.linux-amd64.tar.gz
+
+tar -xvf prometheus-2.47.1.linux-amd64.tar.gz
+
+sudo mkdir -p /data /etc/prometheus
+
+cd prometheus-2.47.1.linux-amd64/
+
+sudo mv prometheus promtool /usr/local/bin/
+
+sudo mv consoles/ console_libraries/ /etc/prometheus/
+
+sudo mv prometheus.yml /etc/prometheus/prometheus.yml
+
+sudo chown -R prometheus:prometheus /etc/prometheus/ /data/
+
+sudo vim /etc/systemd/system/prometheus.service
+
+[Unit]
+Description=Prometheus
+Wants=network-online.target
+After=network-online.target
+
+StartLimitIntervalSec=500
+StartLimitBurst=5
+
+[Service]
+User=prometheus
+Group=prometheus
+Type=simple
+Restart=on-failure
+RestartSec=5s
+ExecStart=/usr/local/bin/prometheus \
+  --config.file=/etc/prometheus/prometheus.yml \
+  --storage.tsdb.path=/data \
+  --web.console.templates=/etc/prometheus/consoles \
+  --web.console.libraries=/etc/prometheus/console_libraries \
+  --web.listen-address=0.0.0.0:9090 \
+  --web.enable-lifecycle
+
+[Install]
+WantedBy=multi-user.target
+
+sudo systemctl enable prometheus
+
+sudo systemctl start prometheus
+
+sudo systemctl status Prometheus
+
+## Suppose you encounter any issues with Prometheus or are unable to start it. ####
+
+chown prometheus:prometheus /etc/systemd/system/prometheus.service	## because the service file run with root user so that change the ownership if counter error ###
+
+journalctl -u prometheus -f --no-pager
+
+
+
+#################### node_exporter ############################
+
+sudo useradd \
+    --system \
+    --no-create-home \
+    --shell /bin/false node_exporter
+
+wget https://github.com/prometheus/node_exporter/releases/download/v1.6.1/node_exporter-1.6.1.linux-amd64.tar.gz
+
+tar -xvf node_exporter-1.6.1.linux-amd64.tar.gz
+
+sudo mv node_exporter-1.6.0.linux-amd64/node_exporter /usr/local/bin/
+
+node_exporter --version
+
+
+sudo vim /etc/systemd/system/node_exporter.service
+
+[Unit]
+Description=Node Exporter
+Wants=network-online.target
+After=network-online.target
+
+StartLimitIntervalSec=500
+StartLimitBurst=5
+
+[Service]
+User=node_exporter
+Group=node_exporter
+Type=simple
+Restart=on-failure
+RestartSec=5s
+ExecStart=/usr/local/bin/node_exporter \
+    --collector.logind
+
+[Install]
+WantedBy=multi-user.target
+
+sudo systemctl enable node_exporter
+
+sudo systemctl start node_exporter
+
+sudo systemctl status node_exporter
+
+vi /etc/prometheus/prometheus.yml
+
+- job_name: eks
+    static_configs:
+      - targets: ["<ip addr>:9100"]      ## node_exporter port is 9100
+
+promtool check config /etc/prometheus/prometheus.yml  ## its check the prometheus.yml if there is any error it will shows..
+
+
+
+
+############################## grafana ####################################
+
+sudo apt-get install -y apt-transport-https software-properties-common
+
+wget -q -O - https://packages.grafana.com/gpg.key | sudo apt-key add -
+
+echo "deb https://packages.grafana.com/oss/deb stable main" | sudo tee -a /etc/apt/sources.list.d/grafana.list
+
+sudo apt-get update
+
+sudo apt-get -y install grafana
+
+sudo systemctl enable grafana-server
+
+sudo systemctl start grafana-server
+
+sudo systemctl status grafana-server
+
+8677,1867  for linux and node_exporter
+
+
+############ jenkins monitor ####################
+ download and install jenkins package and runup the system
+
+install jenkins plugin "prometheus-metric" this is jenkins node-exporter
+
+sudo vim /etc/prometheus/prometheus.yml
+
+- job_name: 'jenkins'
+    metrics_path: '/prometheus'
+    static_configs:
+      - targets: ['<jenkins-ip>:8080']
+
+
+promtool check config /etc/prometheus/prometheus.yml
+
+curl -X POST http://localhost:9090/-/reload
+
+thats it now restart promotheus and check it in target 
+after in grafana visualize with dashboard
+
+thats it  dashboard id 9964
+
+################ docker #######################
+
+vi /etc/docker/daemon.json
+
+{
+  "metrics-addr" : "0.0.0.0:9323",
+  "experimental" : true
+}
+
+sudo service docker restart
+sudo service docker status
+
+### accessing docker metrics ##
+
+curl -i http://localhost:9323/metrics
+
+curl -i http://localhost:9323/metrics | grep containers
+
+after that  add the docker system ip address  in prometheus.yaml
+
+systemctl stop prometheus
+systemctl start prometheus
+
+in grafana run the querry and creat the own grafana dashboard..
+
+
+
+ if you run the prometheus and grafana via docker images prometheus.yaml file is located in docker images
+
+cd /var/lib/docker/volumes/prometheus.conf/_data/prometheus.yml
